@@ -1,0 +1,390 @@
+---
+title: 'An Analysis On Life Expectancy'
+author: "Andrew Casas"
+date: 
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+#library
+library(tidyverse)
+library(car)
+library(dplyr)
+library(readr)
+library(cowplot)
+
+#Import dataset and filter
+Life_Expectancy_Data <- read_csv("C:/Users/casas/Downloads/life-expectancy-data/Life Expectancy Data.csv")
+Life_Expectancy_Data <- Life_Expectancy_Data %>% 
+  drop_na() %>% 
+  mutate(Status = replace(Status, Status == 'Developed', 1)) %>% 
+  mutate(Status = replace(Status, Status == 'Developing', 0))
+
+#split datasets
+set.seed(654)
+train <- Life_Expectancy_Data[sample(1:nrow(Life_Expectancy_Data), 990, replace=F), ]
+test <- Life_Expectancy_Data[which(!(Life_Expectancy_Data$GDP %in% train$GDP)),]
+
+#used GDP because there were no duplicates of GDP
+#tested using 'TRUE %in% duplicated(Life_Expectancy_Data$GDP)'
+
+#remove zeroes for power transformation
+train <- data.frame(train)
+test <- data.frame(test)
+final_data <- data.frame(Life_Expectancy_Data)
+
+train <- train %>% 
+  replace(train[]==0, 0.001)
+
+train$Status <- as.numeric(train$Status)
+
+test <- test %>% 
+  replace(test[]==0, 0.001)
+
+test$Status <- as.numeric(test$Status)
+
+final_data <- final_data %>% 
+  replace(final_data[] == 0, 0.001)
+
+final_data$Status <- as.numeric(final_data$Status)
+
+
+```
+
+## Introduction
+
+Having lived through — and currently living through — a pandemic for over a year I have realized how important our health is and the ways in which societal operations affect the way we live and survive. Studies on life expectancy can demonstrate factors that contribute to higher or lower life spans, which in turn allow for an understanding of what measures are more positive or negative to one’s life. Determining the factors of life expectancy is critical for assessing the health of a population as well as being a key indicator to determine the impact of the decisions we make as a society for public health. This report attempts to demonstrate the main factors which determine life expectancy by focusing on 20 different predictors of life expectancy per country. Data used for this report was retrieved from the World Health Organization (WHO). The goal of this report aims to illustrate key factors of life expectancy in order to inform and support relief measures for issues relating to cases such as COVID-19, or other unprecedented national or global emergencies.
+
+
+## Methods
+
+Before I began my exploratory data analysis I first checked if all the variables were correct and determined the relationship between each predictor to the response variable, finding the relationship to be linear. I then summarised my data to get an idea of how much of the data was explained, and examined the p-values to get an idea of what variables can be expected to be the most significant to the data (refer to figure 1). After making sure that my data was correct – by checking all the variables –I split the data in two sections at random which became the training dataset (60) and the testing dataset (40). The training dataset is the larger set and the set which I will use to perform my methods. The testing dataset will be used to validate the training dataset. I summarised both of these datasets again to ensure that both had similar properties. This was done to assure that one dataset did not contain some skewness or influential points that would make these two datasets statistically different. I then performed a confidence interval on the model to determine if the coefficients of the predictors gave us an accurate representation of the data. I then plotted the residual plots and Q-Q plot of the training dataset to see which assumptions were violated. While the normality assumption held, there did not seem to be constant variance. In order to correct this, I decided to power transform my dataset. I then explored the power transformed dataset and again summarised the data to ensure that the $R^2$ value did not drop significantly, and I plotted the residual plots and Q-Q plot to check whether the assumptions had been corrected. Although not all assumptions were fixed perfectly, the power transformation was able to improve the model. After power transforming my model, I found all of the leverage, outlier and influential points to determine whether there were any specific occurrences that would skew my data in any way. Luckily no significant statistics were found to do so.\\ 
+I then assessed the predictors. Firstly, I saw which predictors contain the highest multicollinearity using the vif() function. I then took note of all predictors with a multicollinearity higher than 5, as these predictors share too much information – in other words, higher than 5 – with other predictors. I also took note of all predictors with a high p-value in the summary of the dataset. With this information I performed backwards elimination where I created a series of different models, and with each of these models I removed one of the predictors with high multicollinearity. I then compared each of the AIC, BIC and adjusted $R^2$ value of these models, including the full model, with the aim to create a model with the lowest AIC, BIC and highest R^2. The AIC and BIC values determine which model is better while being less complicated (having more predictors) and the R^2 value is a proportion of how much of the data is explained. We consider whichever model has the lowest BIC and AIC values – and does not significantly drop the R^2 value (which cannot drop more than 0.03) – as the new reduced model. With this reduced model I ran a partial F-test with the full model and made sure that the p-value of this test was not less than 0.05. I repeated this process many times until I was able to remove as many predictors as I could while still fulfilling each one of my conditions specified. I also periodically checked the new models for the summary of their power transformations to ensure that the model was transformed appropriately and determine whether new assumptions were violated once predictors were removed. Once I constructed the least complicated model possible, I summarised the data and compared it to the full model. This ensured that the adjusted $R^2$ values were not different by more than a factor of 0.02. I ran a multicollinearity test and made sure that no predictors exceeded 5. If for some reason they had, which they turned out to later no, I took note of why this predictor was still important. Finally, I checked if all assumptions held and if any influential points were worth taking note of.
+
+
+## Results
+
+The 20 variables which predict life expectancy are: year (2001 - 2015), the status of a country (whether developed or developing), adult morality, infant deaths, alcohol, recorded per capita (15+) consumption (in litres of pure alcohol), expenditure on health as a percentage of Gross Domestic Product (GDP) per capita(%), Hepatitis B,  cases of measles per 1000, BMI, deaths of infants under 5, percent of population immunized to polio, percentage of population immunized to Diphtheria tetanus toxoid and pertussis, deaths per 1 000 live births HIV/AIDS (0-4 years), population, GDP(USD), prevalence of thinness among children and adolescents for age 10 to 19 (%), number of years of Schooling. Each statistic is a country in a given year. I began this analysis with 2939 observations, but after removing all statistics containing “N/A” I was left with a sample size of 1649. After analyzing the dataset, I split the training set and test dataset. The training dataset contained 990 observations. Below we can see how the training and test dataset differed.
+
+```{r, include=FALSE}
+mtr = train %>% summarise_if(is.numeric, mean)
+sdtr <- apply(train[,-c(1)], 2, sd)
+
+mtest <- test %>% summarise_if(is.numeric, mean)
+sdtest <- apply(test[,-c(1)], 2, sd)
+```
+
+
+
+Variable | mean (s.d.) in training | mean (s.d.) in test
+---------|-------------------------|--------------------
+`r names(test)[2]` | `r round(mtr[1], 3)` (`r round(sdtr[1], 3)`) | `r round(mtest[1], 3)` (`r round(sdtest[1], 3)`)
+`r names(test)[3]` | `r round(mtr[2],3)` (`r round(sdtr[2],3)`) | `r round(mtest[2],3)` (`r round(sdtest[2],3)`)
+`r names(test)[4]` | `r round(mtr[3],3)` (`r round(sdtr[3],3)`) | `r round(mtest[3],3)` (`r round(sdtest[3],3)`)
+`r names(test)[5]` | `r round(mtr[4],3)` (`r round(sdtr[4],3)`) | `r round(mtest[4],3)` (`r round(sdtest[4],3)`)
+`r names(test)[6]` | `r round(mtr[5],3)` (`r round(sdtr[5],3)`) | `r round(mtest[5],3)` (`r round(sdtest[5],3)`)
+`r names(test)[7]` | `r round(mtr[6],3)` (`r round(sdtr[6],3)`) | `r round(mtest[6],3)` (`r round(sdtest[6],3)`)
+`r names(test)[8]` | `r round(mtr[7],3)` (`r round(sdtr[7],3)`) | `r round(mtest[7],3)` (`r round(sdtest[7],3)`)
+`r names(test)[9]` | `r round(mtr[8],3)` (`r round(sdtr[8],3)`) | `r round(mtest[8],3)` (`r round(sdtest[8],3)`)
+`r names(test)[10]` | `r round(mtr[9],3)` (`r round(sdtr[9],3)`) | `r round(mtest[9],3)` (`r round(sdtest[9],3)`)
+`r names(test)[11]` | `r round(mtr[10],3)` (`r round(sdtr[10],3)`) | `r round(mtest[10],3)` (`r round(sdtest[10],3)`)
+`r names(test)[12]` | `r round(mtr[11], 3)` (`r round(sdtr[11], 3)`) | `r round(mtest[11], 3)` (`r round(sdtest[11], 3)`)
+`r names(test)[13]` | `r round(mtr[12],3)` (`r round(sdtr[12],3)`) | `r round(mtest[12],3)` (`r round(sdtest[12],3)`)
+`r names(test)[14]` | `r round(mtr[13],3)` (`r round(sdtr[13],3)`) | `r round(mtest[13],3)` (`r round(sdtest[13],3)`)
+`r names(test)[15]` | `r round(mtr[14],3)` (`r round(sdtr[14],3)`) | `r round(mtest[14],3)` (`r round(sdtest[14],3)`)
+`r names(test)[16]` | `r round(mtr[15],3)` (`r round(sdtr[15],3)`) | `r round(mtest[15],3)` (`r round(sdtest[15],3)`)
+`r names(test)[17]` | `r round(mtr[16],3)` (`r round(sdtr[16],3)`) | `r round(mtest[16],3)` (`r round(sdtest[16],3)`)
+`r names(test)[18]` | `r round(mtr[17],3)` (`r round(sdtr[17],3)`) | `r round(mtest[17],3)` (`r round(sdtest[17],3)`)
+`r names(test)[19]` | `r round(mtr[18],3)` (`r round(sdtr[18],3)`) | `r round(mtest[18],3)` (`r round(sdtest[18],3)`)
+`r names(test)[10]` | `r round(mtr[19],3)` (`r round(sdtr[19],3)`) | `r round(mtest[19],3)` (`r round(sdtest[19],3)`)
+`r names(test)[21]` | `r round(mtr[20], 3)` (`r round(sdtr[20], 3)`) | `r round(mtest[20], 3)` (`r round(sdtest[20], 3)`)
+`r names(test)[22]` | `r round(mtr[21], 3)` (`r round(sdtr[21], 3)`) | `r round(mtest[21], 3)` (`r round(sdtest[21], 3)`)
+
+
+#### Transforming the model               
+               
+Although there seems to be some slight differences, both datasets produce the same data. Because of this, we will now work with the training set and validate our findings later on. In order to transform the model, I changed the status of the value from 'Developed' to 0.001 and the value 'Developing' into 1. This was because positive numerical values are necessary to transform the model. 
+      
+To determine whether the findings had resulted in a better model, a power transformation was performed to the dataset by formally checking the assumptions. This was done by using a $y$ vs $\hat{y}$ to determine linearity, applying a residual plot to determine constant variance and using a Q-Q plot to determine normality.                                          
+
+
+
+```{r, echo=FALSE}
+mod <- lm(Life.expectancy~Year+Status+Adult.Mortality+
+                   infant.deaths+Alcohol+percentage.expenditure+Hepatitis.B
+                 +Measles+BMI+under.five.deaths+Polio+Total.expenditure
+                 +Diphtheria+HIV.AIDS+GDP+Population+thinness..1.19.years+
+                   thinness.5.9.years+Income.composition.of.resources+Schooling
+                 ,data = train)
+
+mod_test <- lm(Life.expectancy~Year+Status+Adult.Mortality+
+                   infant.deaths+Alcohol+percentage.expenditure+Hepatitis.B
+                 +Measles+BMI+under.five.deaths+Polio+Total.expenditure
+                 +Diphtheria+HIV.AIDS+GDP+Population+thinness..1.19.years+
+                   thinness.5.9.years+Income.composition.of.resources+Schooling
+                 ,data = test)
+
+
+
+#power transform
+
+p <- powerTransform(cbind(train[,-c(1)]))
+#summary(p) 
+
+p_mod <- lm((Life.expectancy)^2~(Year)+I((Status)^(-1))+sqrt(Adult.Mortality)+
+                   log(infant.deaths)+sqrt(Alcohol)+log(percentage.expenditure)+(Hepatitis.B)^3
+                 +log(Measles)+BMI+log(under.five.deaths)+(Polio)^4+Total.expenditure
+                 +(Diphtheria)^4+I((HIV.AIDS)^-0.5)+log(GDP)+log(Population)+log(thinness..1.19.years)+
+                   log(thinness.5.9.years)+(Income.composition.of.resources)^2+Schooling
+                 ,data = train) 
+
+p_mod_test <- lm((Life.expectancy)^2~(Year)+I((Status)^(-1))+sqrt(Adult.Mortality)+
+                   log(infant.deaths)+sqrt(Alcohol)+log(percentage.expenditure)+(Hepatitis.B)^3
+                 +log(Measles)+BMI+log(under.five.deaths)+(Polio)^4+Total.expenditure
+                 +(Diphtheria)^4+I((HIV.AIDS)^-0.5)+log(GDP)+log(Population)+log(thinness..1.19.years)+
+                   log(thinness.5.9.years)+(Income.composition.of.resources)^2+Schooling
+                 ,data = test)
+
+#checking assumptions
+x <- fitted(mod)
+r <- resid(mod)
+xp <- fitted(p_mod)
+rp <- resid(p_mod)
+
+#checking assumptions 
+
+par(mfrow = c(2,3))
+
+plot(train$Life.expectancy ~ x, main="Y vs Fitted", xlab="Fitted", ylab="Life Expectancy")
+abline(a = 0, b = 1)
+lines(lowess(train$Life.expectancy ~ x), lty=2)
+
+plot(r ~ x, main="Residuals vs Fitted", xlab="Fitted", ylab="Residuals")
+
+qqnorm(r) 
+qqline(r)
+
+plot((train$Life.expectancy)^2 ~ xp, main="Transformed Y vs Fitted", xlab="Fitted", ylab="Life Expectancy")
+abline(a = 0, b = 1)
+lines(lowess(train$Life.expectancy ~ xp), lty=2)
+
+plot(rp ~ xp, main="Transformed Residuals vs Fitted", xlab="Fitted", ylab="Residuals")
+
+qqnorm(rp, main = "Transformed Q-Q Plot") 
+qqline(rp)
+
+
+```
+         
+Above we can see six plots. The top three plots showing the original model, with the lower three representing the transformed model.         
+Notice that there is no longer a cluster leaning to the right in the residual plot, which means that the assumption of uncorrelated errors as well as constant variance hold because there is no fanning patterns in the residual plot. We can also see that there is a linear relation among both of the $y$ vs $hat{y}$ plots which means that both the linearity assumption and the normality assumption also hold.      
+     
+
+
+
+```{r, include=FALSE}
+#collinearity values
+vif_vals <- vif(p_mod)
+
+
+rmod <- lm((Life.expectancy)^2~I((Status)^(-1))+sqrt(Adult.Mortality)
+                +log(percentage.expenditure)+log(Measles)+(Diphtheria)^4+
+                  I((HIV.AIDS)^-0.5)+log(thinness.5.9.years)+
+                  (Income.composition.of.resources)^2+Schooling, data = train)
+
+#removed perc exp
+rmod1 <- lm((Life.expectancy)^2~(Year)+I((Status)^(-1))+sqrt(Adult.Mortality)+
+                   log(infant.deaths)+sqrt(Alcohol)+(Hepatitis.B)^3
+                 +log(Measles)+BMI+log(under.five.deaths)+(Polio)^4+Total.expenditure
+                 +(Diphtheria)^4+I((HIV.AIDS)^-0.5)+log(GDP)+log(Population)+log(thinness..1.19.years)+
+                   log(thinness.5.9.years)+(Income.composition.of.resources)^2+Schooling
+                 ,data = train) 
+#removed thin 1-19
+rmod2 <- lm((Life.expectancy)^2~(Year)+I((Status)^(-1))+sqrt(Adult.Mortality)+
+                   log(infant.deaths)+sqrt(Alcohol)+log(percentage.expenditure)+(Hepatitis.B)^3
+                 +log(Measles)+BMI+log(under.five.deaths)+(Polio)^4+Total.expenditure
+                 +(Diphtheria)^4+I((HIV.AIDS)^-0.5)+log(GDP)+log(Population)+
+                   log(thinness.5.9.years)+(Income.composition.of.resources)^2+Schooling
+                 ,data = train) 
+#removed thin 5-9
+rmod3 <- lm((Life.expectancy)^2~(Year)+I((Status)^(-1))+sqrt(Adult.Mortality)+
+                   log(infant.deaths)+sqrt(Alcohol)+log(percentage.expenditure)+(Hepatitis.B)^3
+                 +log(Measles)+BMI+log(under.five.deaths)+(Polio)^4+Total.expenditure
+                 +(Diphtheria)^4+I((HIV.AIDS)^-0.5)+log(GDP)+log(Population)+log(thinness..1.19.years)+
+                   (Income.composition.of.resources)^2+Schooling
+                 ,data = train) 
+#removed gdp
+rmod4 <- lm((Life.expectancy)^2~(Year)+I((Status)^(-1))+sqrt(Adult.Mortality)+
+                   log(infant.deaths)+sqrt(Alcohol)+log(percentage.expenditure)+(Hepatitis.B)^3
+                 +log(Measles)+BMI+log(under.five.deaths)+(Polio)^4+Total.expenditure
+                 +(Diphtheria)^4+I((HIV.AIDS)^-0.5)+log(Population)+log(thinness..1.19.years)+
+                   log(thinness.5.9.years)+(Income.composition.of.resources)^2+Schooling
+                 ,data = train) 
+
+s <-summary(p_mod)
+s1 <-summary(rmod1)
+s2 <-summary(rmod2)
+s3 <-summary(rmod3)
+s4 <-summary(rmod4)
+
+rsq <-c(s$adj.r.squared, s1$adj.r.squared, s2$adj.r.squared, s3$adj.r.squared,
+s4$adj.r.squared)
+
+aic <- c(AIC(p_mod), AIC(rmod1), AIC(rmod2), AIC(rmod3), AIC(rmod4))
+
+bic <- c(BIC(p_mod), BIC(rmod1), BIC(rmod2), BIC(rmod3), BIC(rmod4))
+comp <- anova(p_mod,rmod2)
+pval <- comp$`Pr(>F)`
+```
+#### Reducing the model
+
+Now that we have transformed our model, we can examine how the data has changed by comparing figure 1 and figure 2 in the appendix. In order to simplify the data, predictors will be removed to determine which predictors have the highest multicollinearity. The percentage expenditure was found to have a collinearity of `r round(vif_vals[6],2)`, as expected 'thinness 1-19' and 'thinness 5-9' have a high collinearity because the data is very similar, having the values of `r round(vif_vals[17],2)` and `r round(vif_vals[18],2)`. As well as GDP having a collinearity of `r round(vif_vals[15],2)`. As described in my methods, I will perform the backwards elimination and compare four models. Model 1 will be missing 'percentage expenditure', model 2 will be missing 'thinness 1-19', model 3 will be missing 'thinness 5-9' and model 4 will be missing 'GDP'.     
+     
+Model | AIC | BIC | Adjusted $R^2$
+---------|-------------------------|-----------|---------
+Full model | `r (aic[1])` | `r (bic[1])`|`r rsq[1]`
+Model 1 | `r (aic[2])` | `r (bic[2])`|`r rsq[2]`
+Model 2 | `r (aic[3])` | `r (bic[3])`|`r rsq[3]`
+Model 3 | `r (aic[4])` | `r (bic[4])`|`r rsq[4]`
+Model 4 | `r (aic[5])` | `r (bic[5])`|`r rsq[5]`
+       
+From the figure above we can see that the best model is Model 2. Before making this into our new reduced model we will run a partial f-test and determine if this model is acceptable. Running this test gives us a value of 0.076 which means this model is better than the full. This process is repeated recursively until each of the predictors are statistically significant to the model.
+
+#### validating
+
+```{r, include=FALSE}
+
+rmod <- lm((Life.expectancy)^2~I((Status)^(-1))+sqrt(Adult.Mortality)
+                +log(percentage.expenditure)+log(Measles)+(Diphtheria)^4+
+                  I((HIV.AIDS)^-0.5)+log(thinness.5.9.years)+
+                  (Income.composition.of.resources)^2+Schooling, data = train)
+
+rmod_test <- lm((Life.expectancy)^2~I((Status)^(-1))+sqrt(Adult.Mortality)
+                +log(percentage.expenditure)+log(Measles)+(Diphtheria)^4+
+                  I((HIV.AIDS)^-0.5)+log(thinness.5.9.years)+
+                  (Income.composition.of.resources)^2+Schooling, data = test)
+
+sum_rmod <- summary(rmod)
+sum_rmod_test <- summary(rmod_test)
+sum_mod <- summary(mod)
+
+#AIC(p_mod)
+#AIC(rmod)
+##BIC(p_mod)
+#BIC(rmod)
+#vif(rmod)
+#anova(p_mod,rmod)
+
+#confidence interval
+confint(p_mod)
+
+
+sum_r_mod <- summary(rmod)
+sum_mod <- summary(p_mod)
+
+
+#first predictor taken out is thinness from 5-9 due to its large vif score and because it is similar to thinness from 1-19
+#hypothesis test is f test
+confint(rmod)
+anova(rmod)
+
+n <- length(train$Life.expectancy)
+p <- length(coef(rmod))-1
+h <- hatvalues(rmod)
+hcut <- 2*(p+1)/n
+w1 <- which(h > hcut)
+w2 <- which(r < -2 | r > 2)
+DFFITScut <- 2*sqrt((p+1)/n)
+dfs <- dffits(rmod)
+w3 <- which(abs(dfs) > DFFITScut)
+DFBETAcut <- 2/sqrt(n)
+dfb <- dfbetas(rmod)
+w4 <- which(abs(dfb[,9]) > DFBETAcut)
+
+w <- unique(c(w3, w4))
+
+
+n2 <- length(test$Life.expectancy)
+p2 <- length(coef(rmod_test))-1
+h2 <- hatvalues(rmod_test)
+hcut2 <- 2*(p2+1)/n2
+DFFITScut2 <- 2*sqrt((p2+1)/n2)
+dfs2 <- dffits(rmod_test)
+w32 <- which(abs(dfs2) > DFFITScut2)
+DFBETAcut2 <- 2/sqrt(n2)
+dfb2 <- dfbetas(rmod_test)
+w42 <- which(abs(dfb[,9]) > DFBETAcut)
+
+w2 <- unique(c(w32, w42))
+
+```
+
+Variable | Estimate | Standard Error
+---------|-------------------------|--------------------
+`r names(test)[4]` | `r sum_rmod$coefficients[1]` (`r sum_rmod$coefficients[1,2]`) | `r sum_rmod_test$coefficients[1]` (`r sum_rmod_test$coefficients[1,2]`)
+`r names(test)[3]` | `r sum_rmod$coefficients[2]` (`r sum_rmod$coefficients[2,2]`) | `r sum_rmod_test$coefficients[2]` (`r sum_rmod_test$coefficients[2,2]`)
+`r names(test)[5]` | `r sum_rmod$coefficients[3]` (`r sum_rmod$coefficients[3,2]`) | `r sum_rmod_test$coefficients[3]` (`r sum_rmod_test$coefficients[3,2]`)
+`r names(test)[8]` | `r sum_rmod$coefficients[4]` (`r sum_rmod$coefficients[4,2]`) | `r sum_rmod_test$coefficients[4]` (`r sum_rmod_test$coefficients[4,2]`)
+`r names(test)[10]` | `r sum_rmod$coefficients[5]` (`r sum_rmod$coefficients[5,2]`) | `r sum_rmod_test$coefficients[5]` (`r sum_rmod_test$coefficients[5,2]`)
+`r names(test)[15]` | `r sum_rmod$coefficients[6]` (`r sum_rmod$coefficients[6,2]`) | `r sum_rmod_test$coefficients[6]` (`r sum_rmod_test$coefficients[6,2]`)
+`r names(test)[16]` | `r sum_rmod$coefficients[7]` (`r sum_rmod$coefficients[7,2]`) | `r sum_rmod_test$coefficients[7]` (`r sum_rmod_test$coefficients[7,2]`)
+`r names(test)[20]` | `r sum_rmod$coefficients[8]` (`r sum_rmod$coefficients[8,2]`) | `r sum_rmod_test$coefficients[8]` (`r sum_rmod_test$coefficients[8,2]`)
+`r names(test)[21]` | `r sum_rmod$coefficients[9]` (`r sum_rmod$coefficients[9,2]`) | `r sum_rmod_test$coefficients[9]` (`r sum_rmod_test$coefficients[9,2]`)
+`r names(test)[22]` | `r sum_rmod$coefficients[10]` (`r sum_rmod$coefficients[10,2]`) | `r sum_rmod_test$coefficients[10]` (`r sum_rmod_test$coefficients[10,2]`)
+      
+
+Here we can also see the final model, with the predictors being Status, Adult Mortality, percentage expenditure, measles, diphtheria, HIV/Aids, thinness 5-9, income composition and schooling, where we can refer to figure 3 in the appendix to see which transformations were applied to the model.
+
+## Discussion
+
+By refining the number of predictors in the initial model it became clear that the predictors that significantly impact life expectancy are mostly related to accessibility to resources, such as access to medicine and schooling. This proves to be useful because this may inform the public of what actions need to be taken in order to support countries which are struggling with lower life expectancy. When analysing this in the context of the COVID-19 pandemic, we can see that a crucial aspect of life quality is accessibility to vaccines and other forms of medical immunization. 
+
+#### limitations
+Comparing the training and test models we determined that one predictor was significantly different in both models. 
+We will compare the two datasets by highlighting the influential points in simple linear regression models to determine if this was the reason.
+
+
+```{r, echo=FALSE}
+par(mfrow = c(1,2))
+
+plot((train[,4])^2~(train[,21])^2, main="Life expectancy^2 vs Income composition ^2", xlab="Income composition ^2", ylab="Life expectancy^2")
+points((train[w,4])^2~(train[w,21])^2, col="orange", pch=19)
+
+plot((test[,4])^2~(test[,21])^2, main="Life expectancy^2 vs Income composition ^2", xlab="Income composition ^2", ylab="Life expectancy^2")
+points((test[w2,4])^2~(test[w2,21])^2, col="orange", pch=19)
+```
+
+The plots above show the influential points in the simple regression model life expectancy vs income composition. The left is the training set and the left is the testing, we can see that there are significantly more influential points on the left of the training dataset plot. This is causing the difference when comparing the datasets. However we will still accept this dataset to be validated due to all if its similarities.
+           
+We must also notice that the final model had an $R^2$ value of 0.80 which indicates that we were not able to truly determine all factors which predict life expectancy. 
+
+\newpage
+
+## References
+
+World Health Organization. (n.d.). Home. World Health Organization. Retrieved December 18, 2021, from https://www.who.int/ 
+Pardoe, I. (2021). Applied regression modeling. Wiley. 
+
+## Appendix
+
+Figure 1.
+``` {r, echo=FALSE}
+sum_mod
+```
+Figure 2.
+``` {r, echo=FALSE}
+sum_rmod
+```
+Figure 3.
+``` {r, echo=FALSE}
+final_mod <- lm(formula = (Life.expectancy)^2 ~ I((Status)^(-1)) + sqrt(Adult.Mortality) + 
+    log(percentage.expenditure) + log(Measles) + (Diphtheria)^4 + 
+    I((HIV.AIDS)^-0.5) + log(thinness.5.9.years) + (Income.composition.of.resources)^2 + 
+    Schooling, data = final_data)
+
+summary(final_mod)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
